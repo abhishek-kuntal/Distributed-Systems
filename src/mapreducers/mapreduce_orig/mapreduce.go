@@ -11,7 +11,6 @@ import "net/rpc"
 import "net"
 import "bufio"
 import "hash/fnv"
-import "sync"
 
 // import "os/exec"
 
@@ -64,11 +63,11 @@ type MapReduce struct {
 	// Map of registered workers that you need to keep up to date
 	Workers map[string]*WorkerInfo
 
-	jobChannel chan *DoJobArgs
-	replyChannel chan *DoJobReply
-	mapLock sync.RWMutex
-
 	// add any additional state here
+	address string
+	busy bool
+	alive bool
+
 }
 
 func InitMapReduce(nmap int, nreduce int,
@@ -81,10 +80,6 @@ func InitMapReduce(nmap int, nreduce int,
 	mr.alive = true
 	mr.registerChannel = make(chan string)
 	mr.DoneChannel = make(chan bool)
-	mr.Workers = make(map[string] *WorkerInfo)
-	mr.jobChannel = make(chan *DoJobArgs)
-	mr.replyChannel = make(chan *DoJobReply)
-	mr.mapLock = sync.RWMutex{}
 
 	// initialize any additional state here
 	return mr
