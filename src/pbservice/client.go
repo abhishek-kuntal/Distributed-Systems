@@ -7,10 +7,12 @@ import "fmt"
 import "crypto/rand"
 import "math/big"
 
+import "time"
 
 type Clerk struct {
 	vs *viewservice.Clerk
 	// Your declarations here
+	view  *viewservice.View
 }
 
 // this may come in handy.
@@ -25,10 +27,8 @@ func MakeClerk(vshost string, me string) *Clerk {
 	ck := new(Clerk)
 	ck.vs = viewservice.MakeClerk(me, vshost)
 	// Your ck.* initializations here
-
 	return ck
 }
-
 
 //
 // call() sends an RPC to the rpcname handler on server srv
@@ -64,6 +64,24 @@ func call(srv string, rpcname string,
 	return false
 }
 
+func (ck *Clerk) getPrimaryView(flag bool) string {
+	//v := ck.getView(flag)
+	if ck.view == nil || flag {
+		v, ok := ck.vs.Get() 
+		if ok { 
+			ck.view = &v  
+		} else { ck.view = nil }
+	} 
+	if ck.view != nil { return ck.view.Primary }
+	return ""
+}
+
+/**
+  * Note :
+  *   We can assume that each clerk has only one outstanding
+  *   Put or Get.
+  */
+
 //
 // fetch a key's value from the current primary;
 // if they key has never been set, return "".
@@ -72,9 +90,23 @@ func call(srv string, rpcname string,
 // says the key doesn't exist (has never been Put().
 //
 func (ck *Clerk) Get(key string) string {
+	args := &GetArgs{Key:key, OpID:nrand()}	
+	var reply GetReply
+	
+	flag := false
+	for {
+		primary := ck.getPrimaryView(flag)
 
-	// Your code here.
-
+		call(primary, "PBServer.Get", args, &reply)
+		
+		if reply.Err == OK || reply.Err == ErrNoKey {
+			return reply.Value
+		} else {
+			flag = true
+		}
+		
+		time.Sleep(viewservice.PingInterval)
+	}
 	return "???"
 }
 
@@ -82,8 +114,23 @@ func (ck *Clerk) Get(key string) string {
 // send a Put or Append RPC
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
+	args := &PutAppendArgs{Key:key, Value:value, Method:op, OpID:nrand()}
+	var reply PutAppendReply
+	
+	flag := false
+	for {
+		primary := ck.getPrimaryView(flag)
 
-	// Your code here.
+		call(primary, "PBServer.PutAppend", args, &reply)
+		
+		if reply.Err == OK {
+			break
+		} else {
+			flag = true
+		}
+
+		time.Sleep(viewservice.PingInterval)
+	}
 }
 
 //
@@ -91,7 +138,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 // must keep trying until it succeeds.
 //
 func (ck *Clerk) Put(key string, value string) {
-	ck.PutAppend(key, value, "Put")
+	ck.PutAppend(key, value, Put)
 }
 
 //
@@ -99,5 +146,5 @@ func (ck *Clerk) Put(key string, value string) {
 // must keep trying until it succeeds.
 //
 func (ck *Clerk) Append(key string, value string) {
-	ck.PutAppend(key, value, "Append")
+	ck.PutAppend(key, value, Append)
 }
