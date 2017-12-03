@@ -1,21 +1,41 @@
 package kvpaxos
 
-const (
-	OK       = "OK"
-	ErrNoKey = "ErrNoKey"
-)
+import "time"
 
 type Err string
+type OpType string
+
+const (
+	OK       Err = "OK"
+	ErrNoKey Err = "ErrNoKey"
+)
+
+const (
+	PutOp       OpType = "Put"
+	AppendOp    OpType = "Append"
+	GetOp       OpType = "Get"
+	NoOp        OpType = "NoOp"
+	PutAppendOp OpType = "PutAppend" // required for server.go routing 
+)
+
+const (
+	InitialBackoff = 10 * time.Millisecond
+	MaxBackoff     = 10 * time.Second
+)
 
 // Put or Append
 type PutAppendArgs struct {
 	// You'll have to add definitions here.
-	Key   string
-	Value string
-	Op    string // "Put" or "Append"
+	Key    string
+	Value  string
+	OpType OpType // "Put" or "Append"
+	
+	ClientId int64
+	Seq      int
 	// You'll have to add definitions here.
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
+
 }
 
 type PutAppendReply struct {
@@ -25,9 +45,12 @@ type PutAppendReply struct {
 type GetArgs struct {
 	Key string
 	// You'll have to add definitions here.
+	ClientId int64
+	Seq      int
 }
 
 type GetReply struct {
-	Err   Err
 	Value string
+	Err   Err
+
 }

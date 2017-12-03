@@ -3,12 +3,14 @@ package kvpaxos
 import "net/rpc"
 import "crypto/rand"
 import "math/big"
+import "time"
 
 import "fmt"
 
 type Clerk struct {
 	servers []string
-	// You will have to modify this struct.
+	id  int64
+	seq int
 }
 
 func nrand() int64 {
@@ -20,8 +22,9 @@ func nrand() int64 {
 
 func MakeClerk(servers []string) *Clerk {
 	ck := new(Clerk)
+	ck.seq = 0
 	ck.servers = servers
-	// You'll have to add code here.
+	ck.id = nrand()
 	return ck
 }
 
@@ -48,15 +51,52 @@ func call(srv string, rpcname string,
 	if errx != nil {
 		return false
 	}
+	//defering code finsih until all sub codes run
+	//closing defered 
 	defer c.Close()
 
 	err := c.Call(rpcname, args, reply)
 	if err == nil {
 		return true
 	}
-
+	//log for debugging
 	fmt.Println(err)
 	return false
+}
+
+//
+// shared by Put and Append.
+//
+func (ck *Clerk) PutAppend(key string, value string, op OpType) {
+	// You will have to modify this function.
+	ck.seq++
+	server := int(nrand()) % len(ck.servers)
+	//args 
+
+	args := &PutAppendArgs{Key: key, Value: value, OpType: op, Seq: ck.seq, ClientId: ck.id}
+	var reply PutAppendReply
+
+	//initalize 
+	to := InitialBackoff
+	for {
+		//calling
+		ok := call(ck.servers[server], "KVPaxos.PutAppend", args, &reply)
+
+		if ok && reply.Err == OK {
+			//DPrintf("seq %d, cleint %d server received %d reply put: %t", ck.id, ck.seq, server, ok)
+			return
+		}
+
+		//DPrintf("seq %d, cleint %d server received %d put reply failed: %t", ck.id, ck.seq, server, ok)
+
+		time.Sleep(to)
+		if to < MaxBackoff {
+			to *= 2
+		}
+		//check server 
+		server = (server + 1) % len(ck.servers)
+		//DPrintf("seq %d, client %d put trying repoated with server %d", ck.id, ck.seq, server)
+	}
 }
 
 //
@@ -66,19 +106,42 @@ func call(srv string, rpcname string,
 //
 func (ck *Clerk) Get(key string) string {
 	// You will have to modify this function.
-	return ""
+	ck.seq++
+	server := int(nrand()) % len(ck.servers)
+	//args
+	args := &GetArgs{Key: key, Seq: ck.seq, ClientId: ck.id}
+	var reply GetReply
+	//initialize
+	to := InitialBackoff
+	for {
+		ok := call(ck.servers[server], "KVPaxos.Get", args, &reply)
+
+		if ok && reply.Err == OK {
+			//DPrintf("seq %d, client %d server receieve %d reply get: %t", ck.id, ck.seq, server, ok)
+			break
+		}
+
+		//DPrintf("seq %d, cleint %d server receive %d get reply faild %t", ck.id, ck.seq, server, ok)
+
+		time.Sleep(to)
+		if to < MaxBackoff {
+			to *= 2
+		}
+
+		server = (server + 1) % len(ck.servers)
+		//DPrintf("seq %d, cleint %d trying again get with server %d", ck.id, ck.seq, server)
+	}
+	return reply.Value
 }
 
-//
-// shared by Put and Append.
-//
-func (ck *Clerk) PutAppend(key string, value string, op string) {
-	// You will have to modify this function.
-}
-
-func (ck *Clerk) Put(key string, value string) {
-	ck.PutAppend(key, value, "Put")
-}
+//append
 func (ck *Clerk) Append(key string, value string) {
-	ck.PutAppend(key, value, "Append")
+	ck.PutAppend(key, value, AppendOp)
 }
+
+//put
+func (ck *Clerk) Put(key string, value string) {
+	ck.PutAppend(key, value, PutOp)
+}
+
+
